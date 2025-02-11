@@ -28,6 +28,7 @@ from parsedmarc import (
     get_dmarc_reports_from_mailbox,
     get_dmarc_reports_from_mbox,
     kafkaclient,
+    influxdb,
     loganalytics,
     opensearch,
     parse_report_file,
@@ -265,6 +266,14 @@ def _main():
                         )
                 except Exception as error_:
                     logger.error("Kafka Error: {0}".format(error_.__str__()))
+
+                try:
+                    if opts.influxdb_uri:
+                        influxdb_client.save_aggregate_reports_to_influxdb(
+                            report
+                        )
+                except Exception as error_:
+                    logger.error("influxDB Error: {0}".format(error_.__str__()))
 
                 try:
                     if opts.s3_bucket:
@@ -679,6 +688,9 @@ def _main():
         kafka_smtp_tls_topic=None,
         kafka_ssl=False,
         kafka_skip_certificate_verification=False,
+        influxdb_uri=None,
+        influxdb_user=None,
+        influxdb_password=None,
         smtp_host=None,
         smtp_port=25,
         smtp_ssl=False,
@@ -1169,6 +1181,24 @@ def _main():
                     "forensic_topic setting missing from the splunk_hec config section"
                 )
 
+        if "influxdb" in config.sections():
+            influxdb_config = config["influxdb"]
+            if "uri" in influxdb_config:
+                opts.influxdb_uri = influxdb_config["uri"]
+            else:
+                logger.critical("uri setting missing from the influxdb config section")
+                exit(-1)
+            if "user" in influxdb_config:
+                opts.influxdb_user = influxdb_config["user"]
+            else:
+                logger.critical("user setting missing from the influxdb config section")
+                exit(-1)
+            if "password" in influxdb_config:
+                opts.influxdb_password = influxdb_config["password"]
+            else:
+                logger.critical("password setting missing from the influxdb config section")
+                exit(-1)
+
         if "smtp" in config.sections():
             smtp_config = config["smtp"]
             if "host" in smtp_config:
@@ -1504,6 +1534,16 @@ def _main():
             )
         except Exception as error_:
             logger.error("Kafka Error: {0}".format(error_.__str__()))
+
+    if opts.influxdb_uri:
+        try:
+            influxdb_client = influxdb.InfluxDBClient(
+                uri=opts.influxdb_uri,
+                user=opts.influxdb_user,
+                password=opts.influxdb_password,
+            )
+        except Exception as error_:
+            logger.error("InfluxDB Error: {0}".format(error_.__str__()))
 
     if opts.gelf_host:
         try:
